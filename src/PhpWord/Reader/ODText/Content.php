@@ -23,9 +23,14 @@ use DOMElement;
 use DOMNodeList;
 use PhpOffice\Math\Reader\MathML;
 use PhpOffice\PhpWord\Element\Section;
+use PhpOffice\PhpWord\Element\TextRun;
 use PhpOffice\PhpWord\Element\TrackChange;
+use PhpOffice\PhpWord\Exception\InvalidImageException;
+use PhpOffice\PhpWord\Exception\UnsupportedImageTypeException;
 use PhpOffice\PhpWord\PhpWord;
+use PhpOffice\PhpWord\Shared\Converter;
 use PhpOffice\PhpWord\Shared\XMLReader;
+use PhpOffice\PhpWord\Style\Image as ImageStyle;
 
 /**
  * Content reader.
@@ -65,7 +70,7 @@ class Content extends AbstractPart
                         break;
                     case 'text:p': // Paragraph
                         $styleName = $xmlReader->getAttribute('text:style-name', $node);
-                        if (substr($styleName, 0, 2) === 'SB') {
+                        if (substr((string) $styleName, 0, 2) === 'SB') {
                             break;
                         }
                         $element = $xmlReader->getElement('draw:frame/draw:object', $node);
@@ -115,33 +120,9 @@ class Content extends AbstractPart
                                 }
                             }
 
-                            if ($spans) {
+                            if ($spans || $xmlReader->elementExists('.//draw:image', $node)) {
                                 $element = $this->getSection($phpWord)->addTextRun();
-                                foreach ($children as $child) {
-                                    switch ($child->nodeName) {
-                                        case 'text:span':
-                                            /** @var DOMElement $child2 */
-                                            foreach ($child->childNodes as $child2) {
-                                                switch ($child2->nodeName) {
-                                                    case '#text':
-                                                        $element->addText($child2->nodeValue);
-
-                                                        break;
-                                                    case 'text:tab':
-                                                        $element->addText("\t");
-
-                                                        break;
-                                                    case 'text:s':
-                                                        $spaces = (int) $child2->getAttribute('text:c') ?: 1;
-                                                        $element->addText(str_repeat(' ', $spaces));
-
-                                                        break;
-                                                }
-                                            }
-
-                                            break;
-                                    }
-                                }
+                                $this->readTextRun($xmlReader, $node, $element);
                             } else {
                                 $element = $this->getSection($phpWord)->addText($node->nodeValue);
                             }
@@ -192,6 +173,108 @@ class Content extends AbstractPart
                 }
             }
         }
+    }
+
+    /**
+     * Read the text and the images of a paragraph into a run, in their order.
+     */
+    private function readTextRun(XMLReader $xmlReader, DOMElement $node, TextRun $run): void
+    {
+        /** @var DOMElement $child */
+        foreach ($node->childNodes as $child) {
+            switch ($child->nodeName) {
+                case '#text':
+                    $run->addText($child->nodeValue);
+
+                    break;
+                case 'text:tab':
+                    $run->addText("\t");
+
+                    break;
+                case 'text:s':
+                    $spaces = (int) $child->getAttribute('text:c') ?: 1;
+                    $run->addText(str_repeat(' ', $spaces));
+
+                    break;
+                case 'text:line-break':
+                    $run->addTextBreak();
+
+                    break;
+                case 'text:note':
+                    // The text of a note is not the text of the paragraph
+
+                    break;
+                case 'draw:frame':
+                    if (!$this->readFrameImage($xmlReader, $child, $run)) {
+                        // A caption holds its image and its text in a text box
+                        foreach ($xmlReader->getElements('draw:text-box', $child) as $textBox) {
+                            $this->readTextRun($xmlReader, $textBox, $run);
+                        }
+                    }
+
+                    break;
+                case 'draw:a':
+                    $this->readTextRun($xmlReader, $child, $run);
+
+                    break;
+                default:
+                    // Spans, links, fields and the paragraphs of a text box: their text
+                    if (strpos($child->nodeName, 'text:') === 0) {
+                        $this->readTextRun($xmlReader, $child, $run);
+                    }
+            }
+        }
+    }
+
+    /**
+     * Read the image of a frame; false if the frame holds none.
+     */
+    private function readFrameImage(XMLReader $xmlReader, DOMElement $frame, TextRun $run): bool
+    {
+        $images = $xmlReader->getElements('draw:image', $frame);
+        // The image of an object, such as a formula, is only its replacement
+        if ($images->length === 0 || $xmlReader->elementExists('draw:object', $frame)) {
+            return false;
+        }
+        if (!$this->hasImageLoading()) {
+            return true;
+        }
+
+        $style = ['unit' => ImageStyle::UNIT_PX];
+        foreach (['width', 'height'] as $key) {
+            $length = $frame->getAttribute('svg:' . $key);
+            if (preg_match('/^(\d+\.?\d*|\.\d+)(cm|mm|in|pt|pc|px)$/', $length) === 1) {
+                // ODF allows a length without its leading zero, which the converter does not read
+                $style[$key] = Converter::pointToPixel((float) Converter::cssToPoint((string) preg_replace('/^\./', '0.', $length)));
+            }
+        }
+        // As LibreOffice gives it to a PDF: the title and the description, either alone if the other is empty
+        $altText = implode(' - ', array_filter([
+            (string) $xmlReader->getValue('svg:title', $frame),
+            (string) $xmlReader->getValue('svg:desc', $frame),
+        ], static function (string $text): bool {
+            return $text !== '';
+        }));
+        $name = $frame->getAttribute('draw:name');
+
+        // The first image this reader can load; the others are its fallbacks
+        foreach ($images as $image) {
+            $path = (string) preg_replace('#^\./#', '', rawurldecode($image->getAttribute('xlink:href')));
+            // A picture of the package only, never a file or a URL the document points at
+            if ($path === '' || $path[0] === '/' || strpos($path, ':') !== false || in_array('..', explode('/', $path), true)) {
+                continue;
+            }
+
+            try {
+                $run->addImage("zip://{$this->docFile}#{$path}", $style, false, $name === '' ? null : $name, $altText === '' ? null : $altText);
+
+                return true;
+            } catch (InvalidImageException|UnsupportedImageTypeException $exception) {
+                continue;
+            }
+        }
+
+        return true;
     }
 
     private function getSection(PhpWord $phpWord): Section
