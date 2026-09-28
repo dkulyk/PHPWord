@@ -43,6 +43,8 @@ class ListItemRun extends AbstractElement
         for ($iDepth = 1; $iDepth <= $depth; ++$iDepth) {
             $xmlWriter->startElement('text:list');
             $xmlWriter->writeAttribute('text:style-name', $element->getStyle()->getNumStyle());
+            // Word counts every item of a numbering on from the one before it, wherever it is
+            $xmlWriter->writeAttributeIf($iDepth === 1, 'text:continue-numbering', 'true');
             $xmlWriter->startElement('text:list-item');
         }
 

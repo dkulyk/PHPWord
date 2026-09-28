@@ -26,6 +26,8 @@ use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\Element\TrackChange;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Shared\XMLReader;
+use PhpOffice\PhpWord\Style;
+use PhpOffice\PhpWord\Style\Numbering;
 
 /**
  * Content reader.
@@ -44,6 +46,9 @@ class Content extends AbstractPart
     {
         $xmlReader = new XMLReader();
         $xmlReader->getDomFromZip($this->docFile, $this->xmlFile);
+
+        // The automatic list styles, before the lists that name them
+        (new Styles($this->docFile, $this->xmlFile))->read($phpWord);
 
         $nodes = $xmlReader->getElements('office:body/office:text/*');
         $this->section = null;
@@ -158,11 +163,7 @@ class Content extends AbstractPart
 
                         break;
                     case 'text:list': // List
-                        $listItems = $xmlReader->getElements('text:list-item/text:p', $node);
-                        foreach ($listItems as $listItem) {
-                            // $listStyleName = $xmlReader->getAttribute('text:style-name', $listItem);
-                            $this->getSection($phpWord)->addListItem($listItem->nodeValue, 0);
-                        }
+                        $this->readList($xmlReader, $node, $phpWord, 0, '');
 
                         break;
                     case 'text:tracked-changes':
@@ -189,6 +190,31 @@ class Content extends AbstractPart
                         $this->processNodes($children, $xmlReader, $phpWord);
 
                         break;
+                }
+            }
+        }
+    }
+
+    /**
+     * Read a list, and the lists inside its items one level deeper. A list with no style of its
+     * own is in the style of the list around it. Only the first paragraph of an item has a number:
+     * the others, and those of a list header, are read as paragraphs.
+     */
+    private function readList(XMLReader $xmlReader, DOMElement $node, PhpWord $phpWord, int $depth, string $listStyle): void
+    {
+        $listStyle = $node->getAttribute('text:style-name') ?: $listStyle;
+        // Word has nine levels, and a list item a numbering style that is defined
+        $numStyle = Style::getStyle($listStyle) instanceof Numbering ? $listStyle : null;
+        foreach ($xmlReader->getElements('text:list-item|text:list-header', $node) as $item) {
+            $numbered = $item->nodeName === 'text:list-item';
+            foreach ($xmlReader->getElements('text:p|text:h|text:list', $item) as $child) {
+                if ($child->nodeName === 'text:list') {
+                    $this->readList($xmlReader, $child, $phpWord, $depth + 1, $listStyle);
+                } elseif ($numbered) {
+                    $this->getSection($phpWord)->addListItem($child->nodeValue, min($depth, 8), null, $numStyle);
+                    $numbered = false;
+                } else {
+                    $this->getSection($phpWord)->addText($child->nodeValue);
                 }
             }
         }

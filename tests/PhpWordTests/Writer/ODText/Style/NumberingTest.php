@@ -62,9 +62,54 @@ class NumberingTest extends \PHPUnit\Framework\TestCase
         self::assertTrue($doc->elementExists($xPath . '/text:list-style'));
         self::assertTrue($doc->hasElementAttribute($xPath . '/text:list-style', 'style:name'));
         self::assertEquals($expected, $doc->getElementAttribute($xPath . '/text:list-style', 'style:name'));
-        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-bullet'));
-        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-bullet/style:list-level-properties'));
-        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-bullet/style:list-level-properties/style:list-level-label-alignment'));
-        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-bullet/style:text-properties'));
+        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-number'));
+        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-number/style:list-level-properties'));
+        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-number/style:list-level-properties/style:list-level-label-alignment'));
+        self::assertTrue($doc->elementExists($xPath . '/text:list-style/text:list-level-style-number/style:text-properties'));
+    }
+
+    public function testNumberFormat(): void
+    {
+        $phpWord = new PhpWord();
+        $phpWord->addNumberingStyle('Num', [
+            'type' => 'multilevel',
+            'levels' => [
+                ['format' => 'decimal', 'text' => '%1.', 'start' => 3],
+                ['format' => 'lowerLetter', 'text' => '(%2)'],
+                ['format' => 'upperRoman', 'text' => '%1.%2.%3'],
+                ['format' => 'bullet', 'text' => '•'],
+                ['format' => 'none', 'text' => 'Note'],
+                ['format' => 'ordinal', 'text' => '%6.'],
+            ],
+        ]);
+        $phpWord->addSection()->addListItem('Item', 0, null, 'Num');
+
+        $doc = TestHelperDOCX::getDocument($phpWord, 'ODText');
+        $doc->setDefaultFile('styles.xml');
+
+        $attributes = ['style:num-format', 'style:num-prefix', 'style:num-suffix', 'text:display-levels', 'style:num-letter-sync', 'text:start-value', 'text:bullet-char'];
+        $levels = [];
+        for ($level = 1; $level <= 6; ++$level) {
+            foreach (['number', 'bullet'] as $kind) {
+                $xPath = '/office:document-styles/office:styles/text:list-style/text:list-level-style-' . $kind . '[@text:level="' . $level . '"]';
+                if ($doc->elementExists($xPath)) {
+                    foreach ($attributes as $attribute) {
+                        if ($doc->hasElementAttribute($xPath, $attribute)) {
+                            $levels[$level][$attribute] = $doc->getElementAttribute($xPath, $attribute);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Letters repeat as Word's do, and a format OpenDocument does not have is written in arabic numbers
+        self::assertEquals([
+            1 => ['style:num-format' => '1', 'style:num-suffix' => '.', 'text:start-value' => '3'],
+            2 => ['style:num-format' => 'a', 'style:num-prefix' => '(', 'style:num-suffix' => ')', 'style:num-letter-sync' => 'true', 'text:start-value' => '1'],
+            3 => ['style:num-format' => 'I', 'text:display-levels' => '3', 'text:start-value' => '1'],
+            4 => ['text:bullet-char' => '•'],
+            5 => ['style:num-format' => '', 'style:num-prefix' => 'Note', 'text:start-value' => '1'],
+            6 => ['style:num-format' => '1', 'style:num-suffix' => '.', 'text:start-value' => '1'],
+        ], $levels);
     }
 }

@@ -71,6 +71,7 @@ class ListItemRunTest extends TestCase
         self::assertTrue($doc->elementExists($xPath));
         self::assertTrue($doc->hasElementAttribute($xPath, 'text:style-name'));
         self::assertEquals('PHPWordListType3', $doc->getElementAttribute($xPath, 'text:style-name'));
+        self::assertEquals('true', $doc->getElementAttribute($xPath, 'text:continue-numbering'));
         self::assertTrue($doc->elementExists($xPath . '/text:list-item'));
         self::assertTrue($doc->elementExists($xPath . '/text:list-item/text:p'));
         self::assertTrue($doc->elementExists($xPath . '/text:list-item/text:p/text:span'));
