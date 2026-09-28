@@ -222,6 +222,22 @@ class ElementTest extends \PHPUnit\Framework\TestCase
         $element = "$p2t/text:p[3]/text:a";
         self::assertTrue($doc->elementExists($element));
         self::assertEquals("#$intlink", $doc->getElementAttribute($element, 'xlink:href'));
+        self::assertFalse($doc->hasElementAttribute($element, 'office:name'));
+    }
+
+    /**
+     * The tooltip of a link is its name, which LibreOffice exports as the description of the link
+     * in a tagged PDF.
+     */
+    public function testLinkTooltip(): void
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+        $section->addLink('https://github.com/PHPOffice/PHPWord', 'PHPWord')->setTooltip('The PHPWord repository');
+        $doc = TestHelperDOCX::getDocument($phpWord, 'ODText');
+
+        $element = '/office:document-content/office:body/office:text/text:section/text:p[2]/text:a';
+        self::assertEquals('The PHPWord repository', $doc->getElementAttribute($element, 'office:name'));
     }
 
     /**
