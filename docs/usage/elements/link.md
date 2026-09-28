@@ -21,4 +21,4 @@ A link can have a tooltip, the text shown when the pointer rests on it. Screen r
 $section->addLink('https://github.com/PHPOffice/PHPWord', 'PHPWord')->setTooltip('The PHPWord repository');
 ```
 
-The tooltip is written and read by the Word2007 writer and reader.
+The tooltip is written and read by the Word2007 writer and reader, and written by the ODText writer as the name of the link.
