@@ -44,6 +44,9 @@ class Link extends AbstractElement
         $xmlWriter->startElement('text:a');
         $xmlWriter->writeAttribute('xlink:type', 'simple');
         $xmlWriter->writeAttribute('xlink:href', ($element->isInternal() ? '#' : '') . $element->getSource());
+        // The name, not office:title, which LibreOffice does not read: it shows the name as the
+        // tooltip and exports it as the description of the link in a tagged PDF
+        $xmlWriter->writeAttributeIf(null !== $element->getTooltip(), 'office:name', (string) $element->getTooltip());
         $this->writeText($element->getText());
         $xmlWriter->endElement(); // text:a
         $this->writeCommentRangeEnd();
