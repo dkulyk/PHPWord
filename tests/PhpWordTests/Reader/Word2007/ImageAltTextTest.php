@@ -42,10 +42,10 @@ class ImageAltTextTest extends TestCase
     /**
      * Save a document with one image, and give back the relationship id of the image.
      */
-    private function saveImage(): string
+    private function saveImage(bool $decorative = false): string
     {
         $phpWord = new PhpWord();
-        $phpWord->addSection()->addImage(__DIR__ . '/../../_files/images/earth.jpg', null, false, 'Earth', 'The Earth seen from space');
+        $phpWord->addSection()->addImage(__DIR__ . '/../../_files/images/earth.jpg', null, false, 'Earth', 'The Earth seen from space')->setDecorative($decorative);
         $this->filename = (string) tempnam(Settings::getTempDir(), 'PhpWord');
         IOFactory::createWriter($phpWord, 'Word2007')->save($this->filename);
 
@@ -128,5 +128,45 @@ class ImageAltTextTest extends TestCase
         $image = $this->readImage();
         self::assertSame('The Earth seen from space', $image->getAltText());
         self::assertSame('earth.jpg', $image->getName());
+    }
+
+    public function testReadWrittenDecorative(): void
+    {
+        $this->saveImage(true);
+
+        self::assertTrue($this->readImage()->isDecorative());
+    }
+
+    public static function providerDecorative(): array
+    {
+        $extLst = '<a:extLst xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><a:ext uri="{C183D7F6-B498-43B3-948B-1728B52AA6E4}">'
+            . '<adec:decorative xmlns:adec="http://schemas.microsoft.com/office/drawing/2017/decorative" val="%s"/></a:ext></a:extLst>';
+        // The frames of providerDrawing, with the content of wp:docPr in place of its descr
+        $drawing = self::providerDrawing();
+        [$inline, $anchor] = str_replace('name="Picture 1"%s/>', 'name="Picture 1">%s</wp:docPr>', [$drawing['inline, docPr'][0], $drawing['anchor, docPr'][0]]);
+
+        return [
+            // As Word writes it
+            'inline' => [$inline, sprintf($extLst, '1'), true],
+            'anchor' => [$anchor, sprintf($extLst, '1'), true],
+            'true' => [$inline, sprintf($extLst, 'true'), true],
+            '0' => [$inline, sprintf($extLst, '0'), false],
+            'false' => [$inline, sprintf($extLst, 'false'), false],
+            'xsd:boolean whitespace' => [$inline, sprintf($extLst, ' true '), true],
+            // Word puts its a16:creationId extension first
+            'after another extension' => [$inline, str_replace('<a:ext uri="{C183', '<a:ext uri="{FF2B5EF4-FFF2-40B4-BE49-F238E27FC236}"><a16:creationId xmlns:a16="http://schemas.microsoft.com/office/drawing/2014/main" id="{00000000-0000-0000-0000-000000000001}"/></a:ext><a:ext uri="{C183', sprintf($extLst, '1')), true],
+            'no extension' => [$inline, '', false],
+        ];
+    }
+
+    /**
+     * @dataProvider providerDecorative
+     */
+    public function testReadDecorative(string $frame, string $extLst, bool $decorative): void
+    {
+        $rId = $this->saveImage();
+        $this->replaceDrawing('<w:drawing>' . sprintf($frame, $extLst, '', $rId) . '</w:drawing>');
+
+        self::assertSame($decorative, $this->readImage()->isDecorative());
     }
 }

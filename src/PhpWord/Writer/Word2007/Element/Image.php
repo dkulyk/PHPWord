@@ -65,6 +65,9 @@ class Image extends AbstractElement
         FrameStyle::WRAP_TOPBOTTOM => 'wp:wrapTopAndBottom',
     ];
 
+    /** a:ext/@uri of the decorative extension, which is a GUID, not a URI */
+    private const DECORATIVE_EXTENSION = '{C183D7F6-B498-43B3-948B-1728B52AA6E4}';
+
     /** Full width and height of the picture in the fixed coordinate space of wp:wrapPolygon, which Word scales to the picture */
     private const WRAP_POLYGON_SIZE = 21600;
 
@@ -161,6 +164,16 @@ class Image extends AbstractElement
         $xmlWriter->writeAttribute('name', $name);
         if ($element->getAltText() !== null) {
             $xmlWriter->writeAttribute('descr', $element->getAltText());
+        }
+        if ($element->isDecorative()) {
+            // As Word and LibreOffice write it
+            $xmlWriter->startElement('a:extLst');
+            $xmlWriter->writeAttribute('xmlns:a', 'http://schemas.openxmlformats.org/drawingml/2006/main');
+            $xmlWriter->startElement('a:ext');
+            $xmlWriter->writeAttribute('uri', self::DECORATIVE_EXTENSION);
+            $xmlWriter->writeElementBlock('adec:decorative', ['xmlns:adec' => 'http://schemas.microsoft.com/office/drawing/2017/decorative', 'val' => '1']);
+            $xmlWriter->endElement(); // a:ext
+            $xmlWriter->endElement(); // a:extLst
         }
         $xmlWriter->endElement(); // wp:docPr
 

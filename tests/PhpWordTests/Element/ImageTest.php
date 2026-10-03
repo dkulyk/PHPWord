@@ -123,6 +123,14 @@ class ImageTest extends AbstractWebServerEmbedded
         self::assertEquals($altText, $image->getAltText());
     }
 
+    public function testDecorative(): void
+    {
+        $image = new Image(__DIR__ . '/../_files/images/earth.jpg');
+        self::assertFalse($image->isDecorative());
+        $image->setDecorative(true);
+        self::assertTrue($image->isDecorative());
+    }
+
     /**
      * Test invalid local image.
      */

@@ -14,6 +14,16 @@ $section->addImage($src, [$style], [$isWatermark], [$name], [$altText]);
 - ``$name``. Name of the image.
 - ``$altText``. Description of the image used by screen readers. The ODText writer writes it as the `svg:desc` of the frame.
 
+An image that only decorates the page, such as a border or a background, can be marked as decorative, so that screen readers skip it. The Word2007 writer and reader keep the mark in `wp:docPr`, as Word does. A watermark is written as VML, which cannot carry the mark.
+
+``` php
+<?php
+
+$image = $section->addImage('border.png');
+$image->setDecorative(true);
+$image->isDecorative(); // true
+```
+
 Examples:
 
 ``` php
