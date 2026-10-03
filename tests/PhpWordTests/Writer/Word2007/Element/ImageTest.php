@@ -18,6 +18,7 @@
 
 namespace PhpOffice\PhpWordTests\Writer\Word2007\Element;
 
+use DOMElement;
 use PhpOffice\PhpWord\PhpWord;
 use PhpOffice\PhpWord\Style\Frame;
 use PhpOffice\PhpWordTests\TestHelperDOCX;
@@ -95,5 +96,32 @@ class ImageTest extends TestCase
         }
         self::assertCount(4, $ids);
         self::assertCount(4, array_unique($ids));
+    }
+
+    public function testWriteDecorative(): void
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+        $section->addImage(self::IMAGE)->setDecorative(true);
+        $section->addImage(self::IMAGE, ['wrappingStyle' => Frame::WRAP_SQUARE])->setDecorative(true);
+        $section->addImage(self::IMAGE);
+        $doc = TestHelperDOCX::getDocument($phpWord);
+
+        $decorative = [];
+        foreach (['wp:inline', 'wp:anchor', 'wp:inline'] as $index => $frame) {
+            $docPr = $doc->getElement('/w:document/w:body/w:p[' . ($index + 1) . ']/w:r/w:drawing/' . $frame . '/wp:docPr');
+            self::assertNotNull($docPr);
+            $decorative[] = $docPr->getElementsByTagNameNS('http://schemas.microsoft.com/office/drawing/2017/decorative', 'decorative')->item(0);
+        }
+        self::assertNotNull($decorative[0]);
+        self::assertSame('1', $decorative[0]->getAttribute('val'));
+        $ext = $decorative[0]->parentNode;
+        self::assertInstanceOf(DOMElement::class, $ext);
+        self::assertSame('ext', $ext->localName);
+        self::assertSame('{C183D7F6-B498-43B3-948B-1728B52AA6E4}', $ext->getAttribute('uri'));
+        self::assertSame('http://schemas.openxmlformats.org/drawingml/2006/main', $ext->namespaceURI);
+        self::assertSame('extLst', $ext->parentNode->localName);
+        self::assertNotNull($decorative[1]);
+        self::assertNull($decorative[2]);
     }
 }
