@@ -529,6 +529,7 @@ abstract class AbstractPart
             $xmlReader->registerNamespace('r', 'http://schemas.openxmlformats.org/officeDocument/2006/relationships');
             $xmlReader->registerNamespace('pic', 'http://schemas.openxmlformats.org/drawingml/2006/picture');
             $xmlReader->registerNamespace('a', 'http://schemas.openxmlformats.org/drawingml/2006/main');
+            $xmlReader->registerNamespace('adec', 'http://schemas.microsoft.com/office/drawing/2017/decorative');
 
             // An inline image, or a floating one
             $frame = $xmlReader->getElement('wp:inline', $node) ?? $xmlReader->getElement('wp:anchor', $node);
@@ -540,7 +541,9 @@ abstract class AbstractPart
             $target = $this->getMediaTarget($docPart, $embedId);
             if ($this->hasImageLoading() && null !== $frame && null !== $target) {
                 $imageSource = "zip://{$this->docFile}#{$target}";
-                $parent->addImage($imageSource, ImageStyle::readDrawing($xmlReader, $frame), false, $name, $altText);
+                $image = $parent->addImage($imageSource, ImageStyle::readDrawing($xmlReader, $frame), false, $name, $altText);
+                $decorative = $xmlReader->getAttribute('val', $frame, 'wp:docPr/a:extLst/a:ext/adec:decorative');
+                $image->setDecorative(in_array(trim((string) $decorative), ['1', 'true'], true));
             }
         } elseif ($node->nodeName == 'w:object') {
             // Object
