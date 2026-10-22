@@ -41,6 +41,7 @@ class ODText extends AbstractReader implements ReaderInterface
         $relationships = $this->readRelationships($docFile);
 
         $readerParts = [
+            'styles.xml' => 'Styles',
             'content.xml' => 'Content',
             'meta.xml' => 'Meta',
         ];

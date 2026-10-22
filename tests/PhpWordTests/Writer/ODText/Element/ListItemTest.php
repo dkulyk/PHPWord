@@ -47,6 +47,9 @@ class ListItemTest extends TestCase
         $xPath = '/office:document-content/office:body/office:text/text:section';
         self::assertEquals('PHPWordListType3', $doc->getElementAttribute($xPath . '/text:list[1]', 'text:style-name'));
         self::assertEquals('First', $doc->getElement($xPath . '/text:list[1]/text:list-item/text:p')->nodeValue);
+        // Each item counts on from the one before it, as in Word; a nested list is part of it
+        self::assertEquals('true', $doc->getElementAttribute($xPath . '/text:list[2]', 'text:continue-numbering'));
+        self::assertFalse($doc->hasElementAttribute($xPath . '/text:list[2]/text:list-item/text:list', 'text:continue-numbering'));
 
         $xPath .= '/text:list[2]';
         $listStyle = $doc->getElementAttribute($xPath, 'text:style-name');
