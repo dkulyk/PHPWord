@@ -120,7 +120,8 @@ class Content extends AbstractPart
                                 }
                             }
 
-                            if ($spans || $xmlReader->elementExists('.//draw:image', $node)) {
+                            // One query per prefix: a prefix the document does not declare fails the whole query
+                            if ($spans || $xmlReader->elementExists('.//draw:image', $node) || $xmlReader->elementExists('.//text:a', $node)) {
                                 $element = $this->getSection($phpWord)->addTextRun();
                                 $this->readTextRun($xmlReader, $node, $element);
                             } else {
@@ -217,8 +218,25 @@ class Content extends AbstractPart
                     $this->readTextRun($xmlReader, $child, $run);
 
                     break;
+                case 'text:a':
+                    $href = $child->getAttribute('xlink:href');
+                    // LibreOffice reads a link without a target as its text.
+                    // ponytail: a Link holds only text, so a link around an image or another link is read as its
+                    // content and loses its target; split the link around them if that matters
+                    if ($href === '' || $xmlReader->elementExists('.//text:a', $child) || $xmlReader->elementExists('.//draw:frame', $child)) {
+                        $this->readTextRun($xmlReader, $child, $run);
+
+                        break;
+                    }
+                    $text = new TextRun();
+                    $this->readTextRun($xmlReader, $child, $text);
+                    // A target in the document, such as a bookmark, starts with #
+                    $internal = $href[0] === '#';
+                    $run->addLink($internal ? substr($href, 1) : $href, $text->getText(), null, null, $internal);
+
+                    break;
                 default:
-                    // Spans, links, fields and the paragraphs of a text box: their text
+                    // Spans, fields and the paragraphs of a text box: their text
                     if (strpos($child->nodeName, 'text:') === 0) {
                         $this->readTextRun($xmlReader, $child, $run);
                     }

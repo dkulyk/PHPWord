@@ -21,6 +21,7 @@ namespace PhpOffice\PhpWordTests\Reader;
 use PhpOffice\Math\Element;
 use PhpOffice\PhpWord\Element\Formula;
 use PhpOffice\PhpWord\Element\Image;
+use PhpOffice\PhpWord\Element\Link;
 use PhpOffice\PhpWord\Element\Section;
 use PhpOffice\PhpWord\Element\Text;
 use PhpOffice\PhpWord\Element\TextBreak;
@@ -85,7 +86,8 @@ class ODTextTest extends \PHPUnit\Framework\TestCase
             . '<text:a xlink:href="https://example.org/">link</text:a><text:line-break/>next<text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>Note</text:p></text:note-body></text:note></text:p>'
             . '<text:p><text:span>Formula <draw:frame><draw:object xlink:href="./Object 1"/>' . sprintf($image, 'mars.jpg') . '</draw:frame></text:span></text:p>'
             . '<text:p>Outside<draw:frame svg:width="in">' . str_replace('Pictures/%s', '../mars.jpg', $image) . str_replace('Pictures/%s', 'file:///etc/hosts', $image)
-            . str_replace('Pictures/%s', '/Pictures/mars.jpg', $image) . '</draw:frame></text:p>';
+            . str_replace('Pictures/%s', '/Pictures/mars.jpg', $image) . '</draw:frame></text:p>'
+            . '<text:p><text:a xlink:href="https://example.org/"><draw:frame svg:width="1cm" svg:height="1cm">' . sprintf($image, 'mars.jpg') . '</draw:frame>pic</text:a></text:p>';
         $file = (string) tempnam(sys_get_temp_dir(), 'PhpWord');
         $zip = new ZipArchive();
         $zip->open($file, ZipArchive::OVERWRITE);
@@ -104,9 +106,10 @@ class ODTextTest extends \PHPUnit\Framework\TestCase
             [['Pictures/earth.jpg', 120.0, 48.0, 'px', 'Earth', 'Earth - The Earth from space']],
             ['Before ', ['Pictures/mars.jpg', 18.9, 18.9, 'px', null, 'Mars'], ' ', 'after'],
             [['Pictures/mars.jpg', 113.39, 113.39, 'px', null, null], 'Illustration ', '1', ': Mars'],
-            [['Pictures/my pic.jpg', 37.8, 37.8, 'px', null, 'Only a title'], 'link', 'BR', 'next'],
+            [['Pictures/my pic.jpg', 37.8, 37.8, 'px', null, 'Only a title'], ['https://example.org/', 'link', false], 'BR', 'next'],
             ['Formula '],
             ['Outside'],
+            [['Pictures/mars.jpg', 37.8, 37.8, 'px', null, null], 'pic'],
         ], $this->readRuns($phpWord));
     }
 
@@ -132,8 +135,55 @@ class ODTextTest extends \PHPUnit\Framework\TestCase
         self::assertEquals([[], ['Before', ' ']], $this->readRuns($withoutImages, false));
     }
 
+    public function testLinksInTheFormsOfLibreOffice(): void
+    {
+        $link = '<text:a xlink:type="simple" xlink:href="%s" text:style-name="Internet_20_link" text:visited-style-name="Visited_20_Internet_20_Link">';
+        $body = '<text:p>' . sprintf($link, 'https://example.com/') . '<text:bookmark text:name="bm"/>Example</text:a></text:p>'
+            . '<text:p>See ' . sprintf($link, 'https://example.org/') . '<text:span text:style-name="T1">here</text:span></text:a> and ' . sprintf($link, '#bm') . 'two<text:s/> words</text:a>.</text:p>'
+            . '<text:p><text:span>In a span: ' . sprintf($link, '../file.odt') . 'file</text:a></text:span>' . sprintf($link, '') . 'no target</text:a>'
+            . '<text:note text:id="ftn1" text:note-class="footnote"><text:note-citation>1</text:note-citation><text:note-body><text:p>Note</text:p></text:note-body></text:note></text:p>'
+            . '<text:p><text:meta>' . sprintf($link, 'https://example.net/') . 'in meta</text:a></text:meta>' . sprintf($link, 'https://outer/') . 'x <text:span>' . sprintf($link, 'https://inner/') . 'y</text:a></text:span> z</text:a></text:p>';
+        $file = (string) tempnam(sys_get_temp_dir(), 'PhpWord');
+        $zip = new ZipArchive();
+        $zip->open($file, ZipArchive::OVERWRITE);
+        $zip->addFromString('mimetype', 'application/vnd.oasis.opendocument.text');
+        $zip->addFromString('content.xml', '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0" xmlns:xlink="http://www.w3.org/1999/xlink"><office:body><office:text>' . $body . '</office:text></office:body></office:document-content>');
+        $zip->close();
+
+        $phpWord = IOFactory::load($file, 'ODText');
+        unlink($file);
+
+        self::assertSame([
+            [['https://example.com/', 'Example', false]],
+            ['See ', ['https://example.org/', 'here', false], ' and ', ['bm', 'two  words', true], '.'],
+            ['In a span: ', ['../file.odt', 'file', false], 'no target'],
+            [['https://example.net/', 'in meta', false], 'x ', ['https://inner/', 'y', false], ' z'],
+        ], $this->readRuns($phpWord));
+    }
+
+    public function testLinksSurviveTheRoundTrip(): void
+    {
+        $phpWord = new PhpWord();
+        $section = $phpWord->addSection();
+        $section->addLink('https://example.com/', 'Example');
+        $textRun = $section->addTextRun();
+        $textRun->addText('See ');
+        $textRun->addLink('bm', 'the bookmark', null, null, true);
+        $file = (string) tempnam(sys_get_temp_dir(), 'PhpWord');
+        IOFactory::createWriter($phpWord, 'ODText')->save($file);
+
+        $read = IOFactory::load($file, 'ODText');
+        unlink($file);
+
+        self::assertSame([
+            [['https://example.com/', 'Example', false]],
+            ['See', ' ', ['bm', 'the bookmark', true]],
+        ], $this->readRuns($read));
+    }
+
     /**
-     * The runs of the first section: a text as its string, an image as its part, size, name and alternative text.
+     * The runs of the first section: a text as its string, a link as its target, text and whether it is internal,
+     * an image as its part, size, name and alternative text.
      *
      * @return array<int, array<int, mixed>>
      */
@@ -144,7 +194,9 @@ class ODTextTest extends \PHPUnit\Framework\TestCase
             self::assertInstanceOf(TextRun::class, $run);
             $read = [];
             foreach ($run->getElements() as $element) {
-                if ($element instanceof Image) {
+                if ($element instanceof Link) {
+                    $read[] = [$element->getSource(), $element->getText(), $element->isInternal()];
+                } elseif ($element instanceof Image) {
                     $style = $element->getStyle();
                     $read[] = [
                         (string) substr($element->getSource(), (int) strpos($element->getSource(), '#') + 1),
