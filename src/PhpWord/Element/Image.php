@@ -83,6 +83,13 @@ class Image extends AbstractElement
     private $altText;
 
     /**
+     * Whether the image is decorative, so that screen readers skip it.
+     *
+     * @var bool
+     */
+    private $decorative = false;
+
+    /**
      * Image type.
      *
      * @var string
@@ -222,6 +229,22 @@ class Image extends AbstractElement
     public function setAltText(?string $value): void
     {
         $this->altText = $value;
+    }
+
+    /**
+     * Whether the image is decorative.
+     */
+    public function isDecorative(): bool
+    {
+        return $this->decorative;
+    }
+
+    /**
+     * Mark the image as decorative, so that screen readers skip it, or as not decorative.
+     */
+    public function setDecorative(bool $value): void
+    {
+        $this->decorative = $value;
     }
 
     /**
