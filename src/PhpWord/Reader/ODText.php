@@ -62,6 +62,7 @@ class ODText extends AbstractReader implements ReaderInterface
             /** @var ODText\AbstractPart $part Type hint */
             $part = new $partClass($docFile, $xmlFile);
             $part->setRels($relationships);
+            $part->setImageLoading($this->hasImageLoading());
             $part->read($phpWord);
         }
     }
